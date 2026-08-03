@@ -1,0 +1,267 @@
+name: Build OpenResty
+on:
+  workflow_dispatch:
+    inputs:
+      openresty_version:
+        description: "OpenResty version: latest or x.x.x.x; empty uses config"
+        required: false
+        type: string
+      enable_upstream_check:
+        description: "Build nginx_upstream_check_module"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      upstream_check_ref:
+        description: "Optional upstream-check Git ref/commit"
+        required: false
+        type: string
+  push:
+    branches:
+      - master
+    paths:
+      - "Dockerfile"
+      - "build-openresty.sh"
+      - "build.sh"
+      - "scripts/**"
+      - "config/**"
+      - "examples/**"
+      - ".github/workflows/build-openresty.yml"
+permissions:
+  contents: write
+env:
+  ARTIFACT_RETENTION_DAYS: "7"
+jobs:
+  resolve:
+    name: Resolve versions
+    runs-on: ubuntu-latest
+    outputs:
+      openresty_version: ${{ steps.resolve.outputs.openresty_version }}
+      openssl_version: ${{ steps.resolve.outputs.openssl_version }}
+      openssl_patch_version: ${{ steps.resolve.outputs.openssl_patch_version }}
+      pcre2_version: ${{ steps.resolve.outputs.pcre2_version }}
+      pcre2_sha256: ${{ steps.resolve.outputs.pcre2_sha256 }}
+      enable_upstream_check: ${{ steps.resolve.outputs.enable_upstream_check }}
+      upstream_check_ref: ${{ steps.resolve.outputs.upstream_check_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Project self-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x build-openresty.sh build.sh scripts/*.sh
+          scripts/self-check.sh
+      - name: Resolve build metadata
+        id: resolve
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.openresty_version }}
+          INPUT_ENABLE_UPSTREAM_CHECK: ${{ inputs.enable_upstream_check }}
+          INPUT_UPSTREAM_CHECK_REF: ${{ inputs.upstream_check_ref }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/*.sh
+          source config/build.conf
+          VERSION="$(scripts/resolve-version.sh "${INPUT_VERSION:-}")"
+          eval "$(scripts/resolve-deps.sh)"
+          ENABLE_CHECK="${INPUT_ENABLE_UPSTREAM_CHECK:-${ENABLE_UPSTREAM_CHECK:-true}}"
+          CHECK_REF="${INPUT_UPSTREAM_CHECK_REF:-${UPSTREAM_CHECK_REF}}"
+          case "${ENABLE_CHECK}" in true|false) ;; *) echo "invalid enable_upstream_check=${ENABLE_CHECK}"; exit 1 ;; esac
+          echo "openresty_version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "openssl_version=${OPENSSL_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "openssl_patch_version=${OPENSSL_PATCH_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "pcre2_version=${PCRE2_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "pcre2_sha256=${PCRE2_SHA256}" >> "${GITHUB_OUTPUT}"
+          echo "enable_upstream_check=${ENABLE_CHECK}" >> "${GITHUB_OUTPUT}"
+          echo "upstream_check_ref=${CHECK_REF}" >> "${GITHUB_OUTPUT}"
+          printf '%s\n' \
+            "OpenResty=${VERSION}" \
+            "OpenSSL=${OPENSSL_VERSION}" \
+            "OpenSSL patch=${OPENSSL_PATCH_VERSION}" \
+            "PCRE2=${PCRE2_VERSION}" \
+            "upstream_check=${ENABLE_CHECK}" \
+            "upstream_check_ref=${CHECK_REF}"
+  build-amd64:
+    name: Build OpenResty amd64
+    needs: resolve
+    runs-on: ubuntu-latest
+    env:
+      OPENSSL_VERSION: ${{ needs.resolve.outputs.openssl_version }}
+      OPENSSL_PATCH_VERSION: ${{ needs.resolve.outputs.openssl_patch_version }}
+      PCRE2_VERSION: ${{ needs.resolve.outputs.pcre2_version }}
+      PCRE2_SHA256: ${{ needs.resolve.outputs.pcre2_sha256 }}
+      ENABLE_UPSTREAM_CHECK: ${{ needs.resolve.outputs.enable_upstream_check }}
+      UPSTREAM_CHECK_REF: ${{ needs.resolve.outputs.upstream_check_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Build OpenResty
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x build-openresty.sh build.sh scripts/*.sh
+          ./build-openresty.sh amd64 "${{ needs.resolve.outputs.openresty_version }}"
+      - name: Verify SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd output
+          sha256sum -c openresty-${{ needs.resolve.outputs.openresty_version }}-*-amd64.tar.gz.sha256
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: openresty-amd64
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            output/openresty-*-amd64.tar.gz
+            output/openresty-*-amd64.tar.gz.sha256
+            output/build-info.txt
+  build-arm64:
+    name: Build OpenResty arm64
+    needs: resolve
+    runs-on: ubuntu-24.04-arm
+    env:
+      OPENSSL_VERSION: ${{ needs.resolve.outputs.openssl_version }}
+      OPENSSL_PATCH_VERSION: ${{ needs.resolve.outputs.openssl_patch_version }}
+      PCRE2_VERSION: ${{ needs.resolve.outputs.pcre2_version }}
+      PCRE2_SHA256: ${{ needs.resolve.outputs.pcre2_sha256 }}
+      ENABLE_UPSTREAM_CHECK: ${{ needs.resolve.outputs.enable_upstream_check }}
+      UPSTREAM_CHECK_REF: ${{ needs.resolve.outputs.upstream_check_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Build OpenResty
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x build-openresty.sh build.sh scripts/*.sh
+          ./build-openresty.sh arm64 "${{ needs.resolve.outputs.openresty_version }}"
+      - name: Verify SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd output
+          sha256sum -c openresty-${{ needs.resolve.outputs.openresty_version }}-*-arm64.tar.gz.sha256
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: openresty-arm64
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            output/openresty-*-arm64.tar.gz
+            output/openresty-*-arm64.tar.gz.sha256
+            output/build-info.txt
+  release:
+    name: Create Release
+    needs:
+      - resolve
+      - build-amd64
+      - build-arm64
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.resolve.outputs.openresty_version }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Generate Release tag
+        id: tag
+        shell: bash
+        run: echo "tag=openresty-${{ needs.resolve.outputs.openresty_version }}" >> "${GITHUB_OUTPUT}"
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+      - name: Merge Release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" \) -exec cp {} release/ \;
+          cp artifacts/openresty-amd64/build-info.txt release/build-info-amd64.txt
+          cp artifacts/openresty-arm64/build-info.txt release/build-info-arm64.txt
+          test "$(find release -maxdepth 1 -type f -name '*-amd64.tar.gz' | wc -l)" -eq 1
+          test "$(find release -maxdepth 1 -type f -name '*-arm64.tar.gz' | wc -l)" -eq 1
+          ls -lh release
+      - name: Create or update Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          body: |
+            OpenResty: ${{ needs.resolve.outputs.openresty_version }}
+            OpenSSL: ${{ needs.resolve.outputs.openssl_version }}
+            PCRE2: ${{ needs.resolve.outputs.pcre2_version }}
+            nginx_upstream_check_module: ${{ needs.resolve.outputs.enable_upstream_check }}
+          files: |
+            release/*
+  sync-hap:
+    name: Sync Release to HAP
+    needs:
+      - release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.release.outputs.version }}
+      RELEASE_TAG: ${{ needs.release.outputs.tag }}
+      HAP_WEBHOOK_URL: ${{ secrets.HAP_WEBHOOK_URL }}
+    steps:
+      - name: Check HAP configuration
+        id: hap
+        shell: bash
+        run: |
+          if [ -n "${HAP_WEBHOOK_URL:-}" ]; then echo "enabled=true" >> "${GITHUB_OUTPUT}"; else echo "enabled=false" >> "${GITHUB_OUTPUT}"; fi
+      - name: Download artifacts
+        if: steps.hap.outputs.enabled == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+      - name: Prepare HAP payload
+        if: steps.hap.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          AMD64_FILE="$(find artifacts/openresty-amd64 -maxdepth 1 -type f -name '*.tar.gz' -print -quit)"
+          ARM64_FILE="$(find artifacts/openresty-arm64 -maxdepth 1 -type f -name '*.tar.gz' -print -quit)"
+          AMD64_SHA_FILE="$(find artifacts/openresty-amd64 -maxdepth 1 -type f -name '*.sha256' -print -quit)"
+          ARM64_SHA_FILE="$(find artifacts/openresty-arm64 -maxdepth 1 -type f -name '*.sha256' -print -quit)"
+          AMD64_NAME="$(basename "${AMD64_FILE}")"
+          ARM64_NAME="$(basename "${ARM64_FILE}")"
+          AMD64_SHA256="$(awk 'NR==1{print $1}' "${AMD64_SHA_FILE}")"
+          ARM64_SHA256="$(awk 'NR==1{print $1}' "${ARM64_SHA_FILE}")"
+          RELEASE_JSON="$(gh api -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          RELEASE_URL="$(jq -r '.html_url // empty' <<<"${RELEASE_JSON}")"
+          AMD64_URL="$(jq -r --arg n "${AMD64_NAME}" '.assets[]|select(.name==$n)|.browser_download_url' <<<"${RELEASE_JSON}" | head -1)"
+          ARM64_URL="$(jq -r --arg n "${ARM64_NAME}" '.assets[]|select(.name==$n)|.browser_download_url' <<<"${RELEASE_JSON}" | head -1)"
+          test -n "${RELEASE_URL}"; test -n "${AMD64_URL}"; test -n "${ARM64_URL}"
+          ATTACHMENT_URLS="$(jq -cn --arg amd64 "${AMD64_URL}" --arg arm64 "${ARM64_URL}" '[$amd64,$arm64]')"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          jq -n \
+            --arg repository "${GITHUB_REPOSITORY}" --arg version "${VERSION}" --arg tag "${RELEASE_TAG}" \
+            --arg release_url "${RELEASE_URL}" --arg amd64_name "${AMD64_NAME}" --arg amd64_url "${AMD64_URL}" \
+            --arg amd64_sha256 "${AMD64_SHA256}" --arg arm64_name "${ARM64_NAME}" --arg arm64_url "${ARM64_URL}" \
+            --arg arm64_sha256 "${ARM64_SHA256}" --arg attachment_urls "${ATTACHMENT_URLS}" --arg commit_sha "${GITHUB_SHA}" \
+            --arg run_id "${GITHUB_RUN_ID}" --arg run_url "${RUN_URL}" \
+            '{repository:$repository,version:$version,tag:$tag,release_url:$release_url,amd64_name:$amd64_name,amd64_url:$amd64_url,amd64_sha256:$amd64_sha256,arm64_name:$arm64_name,arm64_url:$arm64_url,arm64_sha256:$arm64_sha256,attachment_urls:$attachment_urls,commit_sha:$commit_sha,run_id:$run_id,run_url:$run_url,build_status:"success"}' > hap-payload.json
+          jq -e '(.attachment_urls|type)=="string" and ((.attachment_urls|fromjson|length)==2)' hap-payload.json >/dev/null
+          jq . hap-payload.json
+      - name: Send Release information to HAP
+        if: steps.hap.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --connect-timeout 15 --max-time 180 \
+            -H 'Content-Type: application/json; charset=utf-8' --data-binary @hap-payload.json "${HAP_WEBHOOK_URL}"
