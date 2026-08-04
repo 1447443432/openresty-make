@@ -75,15 +75,59 @@ stage_fail()
 run_stage()
 {
     local name="$1"
+    local status
 
     shift
     stage_start
 
-    if "$@" >>"${BUILD_LOG}" 2>&1; then
+    set +e
+
+    (
+        set -e
+        "$@"
+    ) >>"${BUILD_LOG}" 2>&1
+
+    status=$?
+
+    set -e
+
+    if [ "${status}" -eq 0 ]; then
         stage_ok "${name}"
     else
         stage_fail "${name}"
     fi
+}
+
+check_environment()
+{
+    local command_name
+
+    for command_name in \
+        gcc \
+        g++ \
+        make \
+        perl \
+        patch \
+        tar \
+        sha256sum
+    do
+        if ! command -v "${command_name}" >/dev/null 2>&1; then
+            echo "[ERROR] missing command: ${command_name}" >&2
+            return 1
+        fi
+    done
+
+    perl -MIPC::Cmd \
+        -e 'print "IPC::Cmd=$IPC::Cmd::VERSION\n"'
+
+    perl -MData::Dumper \
+        -e 'print "Data::Dumper=$Data::Dumper::VERSION\n"'
+
+    perl -MExtUtils::MakeMaker \
+        -e 'print "ExtUtils::MakeMaker=$ExtUtils::MakeMaker::VERSION\n"'
+
+    perl -MTime::Piece \
+        -e 'print "Time::Piece=$Time::Piece::VERSION\n"'
 }
 
 check_sources()
@@ -449,6 +493,7 @@ main()
 
     start="$(date +%s)"
 
+    run_stage 'check environment' check_environment
     run_stage 'check sources' check_sources
     run_stage 'extract sources' extract_sources
     run_stage 'detect paths' detect_paths
