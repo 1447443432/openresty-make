@@ -1,3 +1,5 @@
+> 修正版：Dockerfile 已为 `BUILDER_IMAGE` 设置合法默认值，消除 `InvalidDefaultArgInFrom` 构建检查错误。
+
 # openresty-make
 
 用于通过 GitHub Actions 或本地 Docker，构建 amd64、arm64 两种架构的 OpenResty 可移植安装包，并自动发布到 GitHub Release。
