@@ -125,7 +125,11 @@ check_environment()
         perl \
         patch \
         tar \
-        sha256sum
+        sha256sum \
+        autoconf \
+        automake \
+        libtool \
+        pkg-config
     do
         if ! command -v "${command_name}" >/dev/null 2>&1; then
             echo "[ERROR] missing command: ${command_name}" >&2
@@ -144,6 +148,9 @@ check_environment()
 
     perl -MTime::Piece \
         -e 'print "Time::Piece=$Time::Piece::VERSION\n"'
+
+    perl -MDigest::SHA \
+        -e 'print "Digest::SHA=$Digest::SHA::VERSION\n"'
 }
 
 check_sources()

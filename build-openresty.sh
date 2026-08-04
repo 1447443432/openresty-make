@@ -178,14 +178,44 @@ docker_no_cache=${DOCKER_NO_CACHE}
 INFO
 }
 
+format_duration()
+{
+    local total_seconds="$1"
+    local hours
+    local minutes
+    local seconds
+
+    hours=$(( total_seconds / 3600 ))
+    minutes=$(( total_seconds % 3600 / 60 ))
+    seconds=$(( total_seconds % 60 ))
+
+    if [ "${hours}" -gt 0 ]; then
+        printf '%02d:%02d:%02d' \
+            "${hours}" \
+            "${minutes}" \
+            "${seconds}"
+    else
+        printf '%02d:%02d' \
+            "${minutes}" \
+            "${seconds}"
+    fi
+}
+
 show_progress()
 {
     local pid="$1"
     local name="$2"
+    local start_time="$3"
+    local elapsed
 
     if [ "${INTERACTIVE}" = "true" ]; then
         while kill -0 "${pid}" 2>/dev/null; do
-            printf '\r[INFO] %s running...' "${name}"
+            elapsed=$(( $(date +%s) - start_time ))
+
+            printf '\r[INFO] %s running... elapsed=%s' \
+                "${name}" \
+                "$(format_duration "${elapsed}")"
+
             sleep 1
         done
 
@@ -197,7 +227,9 @@ show_progress()
             sleep 30
 
             if kill -0 "${pid}" 2>/dev/null; then
-                echo "[INFO] ${name} is still running..."
+                elapsed=$(( $(date +%s) - start_time ))
+
+                echo "[INFO] ${name} is still running... elapsed=$(format_duration "${elapsed}")"
             fi
         done
     fi
@@ -206,17 +238,34 @@ show_progress()
 run_long_stage()
 {
     local name="$1"
+    local pid
+    local start_time
+    local elapsed
+    local status
+
     shift
 
+    start_time="$(date +%s)"
+
     "$@" &
-    local pid=$!
+    pid=$!
 
-    show_progress "${pid}" "${name}"
+    show_progress \
+        "${pid}" \
+        "${name}" \
+        "${start_time}"
 
-    if wait "${pid}"; then
-        echo "[OK] ${name}"
+    set +e
+    wait "${pid}"
+    status=$?
+    set -e
+
+    elapsed=$(( $(date +%s) - start_time ))
+
+    if [ "${status}" -eq 0 ]; then
+        echo "[OK] ${name} ($(format_duration "${elapsed}"))"
     else
-        echo "[ERROR] ${name}" >&2
+        echo "[ERROR] ${name} ($(format_duration "${elapsed}"))" >&2
 
         if [ -f "${DOCKER_LOG}" ]; then
             echo "========== last Docker build log =========="
@@ -224,7 +273,7 @@ run_long_stage()
             echo "==========================================="
         fi
 
-        exit 1
+        exit "${status}"
     fi
 }
 
@@ -264,29 +313,51 @@ echo "expected_arch=${EXPECTED_ARCH}"
 echo "actual_arch=${ACTUAL_ARCH}"
 
 if [ "${ACTUAL_ARCH}" != "${EXPECTED_ARCH}" ]; then
-    echo "[ERROR] architecture mismatch"
+    echo "[ERROR] architecture mismatch" >&2
     exit 1
 fi
 
 echo "========== versions =========="
 
-ldd --version 2>&1 | sed -n "1p"
-gcc --version 2>&1 | sed -n "1p"
-make --version 2>&1 | sed -n "1p"
-perl -v 2>&1 | sed -n "1,2p"
+ldd --version 2>&1 | sed -n '1p'
+gcc --version 2>&1 | sed -n '1p'
+g++ --version 2>&1 | sed -n '1p'
+make --version 2>&1 | sed -n '1p'
+perl -v 2>&1 | sed -n '1,2p'
+autoconf --version 2>&1 | sed -n '1p'
+automake --version 2>&1 | sed -n '1p'
+libtool --version 2>&1 | sed -n '1p'
+pkg-config --version
 
 echo "========== required commands =========="
 
 for command_name in \
     gcc \
+    g++ \
     make \
-    perl \
+    wget \
+    curl \
     patch \
+    diff \
     tar \
-    sha256sum
+    gzip \
+    bzip2 \
+    xz \
+    perl \
+    file \
+    git \
+    unzip \
+    which \
+    find \
+    sha256sum \
+    autoconf \
+    automake \
+    autoreconf \
+    libtool \
+    pkg-config
 do
     if ! command -v "${command_name}" >/dev/null 2>&1; then
-        echo "[ERROR] missing command: ${command_name}"
+        echo "[ERROR] missing command: ${command_name}" >&2
         exit 1
     fi
 
@@ -297,6 +368,36 @@ echo "========== Perl modules =========="
 
 perl -MIPC::Cmd \
     -e 'print "IPC::Cmd=$IPC::Cmd::VERSION\n"'
+
+perl -MData::Dumper \
+    -e 'print "Data::Dumper=$Data::Dumper::VERSION\n"'
+
+perl -MExtUtils::MakeMaker \
+    -e 'print "ExtUtils::MakeMaker=$ExtUtils::MakeMaker::VERSION\n"'
+
+perl -MTime::Piece \
+    -e 'print "Time::Piece=$Time::Piece::VERSION\n"'
+
+perl -MDigest::SHA \
+    -e 'print "Digest::SHA=$Digest::SHA::VERSION\n"'
+
+echo "========== required RPM packages =========="
+
+rpm -q \
+    openssl-devel \
+    zlib-devel \
+    pcre-devel \
+    perl-IPC-Cmd \
+    perl-Data-Dumper \
+    perl-ExtUtils-MakeMaker \
+    perl-Time-Piece \
+    perl-Digest-SHA \
+    autoconf \
+    automake \
+    libtool \
+    pkgconfig \
+    readline-devel \
+    ncurses-devel
 
 echo "[OK] Builder verification passed"
 CHECK_EOF
