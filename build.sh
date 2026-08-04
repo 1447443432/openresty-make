@@ -301,10 +301,44 @@ configure_openresty()
 
     ./configure "${args[@]}"
 
-    NGINX_SRC="$(find "${OPENRESTY_SRC}/build" -maxdepth 1 -type d -name 'nginx-*' -print | sort -V | sed -n '$p')"
+    if [ ! -f "${OPENRESTY_SRC}/Makefile" ]; then
+        echo "[ERROR] OpenResty Makefile was not generated" >&2
+        return 1
+    fi
+
+    # OpenResty 1.31.1.1 中的 lua-cjson 使用了 C99 语法。
+    # CentOS 7 的 GCC 4.8.5 默认使用 GNU89，需要显式增加 -std=gnu99。
+    if ! grep -q 'CJSON_CFLAGS="[^"]*-std=gnu99' "${OPENRESTY_SRC}/Makefile"; then
+        sed -i -r \
+            's/(CJSON_CFLAGS="[^"]*)"/\1 -std=gnu99"/g' \
+            "${OPENRESTY_SRC}/Makefile"
+    fi
+
+    if ! grep -q 'CJSON_CFLAGS="[^"]*-std=gnu99' "${OPENRESTY_SRC}/Makefile"; then
+        echo "[ERROR] failed to add -std=gnu99 to CJSON_CFLAGS" >&2
+        return 1
+    fi
+
+    echo "========== lua-cjson compile flags =========="
+    grep -oE 'CJSON_CFLAGS="[^"]+"' "${OPENRESTY_SRC}/Makefile" |
+        sort -u
+
+    NGINX_SRC="$(
+        find "${OPENRESTY_SRC}/build" \
+            -maxdepth 1 \
+            -type d \
+            -name 'nginx-*' \
+            -print |
+            sort -V |
+            sed -n '$p'
+    )"
+
     test -d "${NGINX_SRC}"
 
-    NGINX_CORE_VERSION="$(basename "${NGINX_SRC}" | sed 's/^nginx-//')"
+    NGINX_CORE_VERSION="$(
+        basename "${NGINX_SRC}" |
+            sed 's/^nginx-//'
+    )"
 }
 
 apply_upstream_check_patch()
@@ -351,6 +385,12 @@ apply_upstream_check_patch()
 compile_openresty()
 {
     cd "${OPENRESTY_SRC}"
+
+    if ! grep -q 'CJSON_CFLAGS="[^"]*-std=gnu99' Makefile; then
+        echo "[ERROR] lua-cjson C99 compile flag is missing" >&2
+        return 1
+    fi
+
     make -j"${BUILD_JOBS}"
 }
 
