@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+# 保存原始标准输出和错误输出。
+# 阶段命令虽然写入 BUILD_LOG，但错误摘要仍输出到 Actions 日志。
+exec 3>&1 4>&2
 
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${BASE_DIR}"
@@ -45,6 +49,7 @@ case "$(uname -m)" in
 esac
 
 stage_start_time=0
+CURRENT_STAGE=""
 
 stage_start()
 {
@@ -57,6 +62,7 @@ stage_ok()
     local cost
 
     cost=$(( $(date +%s) - stage_start_time ))
+
     echo "[OK] ${name} (${cost}s)"
     echo "${name}=${cost}s" >>"${STAGE_LOG}"
 }
@@ -64,38 +70,48 @@ stage_ok()
 stage_fail()
 {
     local name="$1"
+    local status="${2:-1}"
 
-    echo "[ERROR] ${name}" >&2
-    echo "========== last build log =========="
-    tail -160 "${BUILD_LOG}" || true
-    echo "===================================="
-    exit 1
+    # 防止错误处理函数自身再次触发 ERR trap。
+    trap - ERR
+
+    echo "[ERROR] ${name}" >&4
+    echo "========== last build log ==========" >&4
+    tail -160 "${BUILD_LOG}" >&4 || true
+    echo "====================================" >&4
+
+    exit "${status}"
 }
+
+on_error()
+{
+    local status=$?
+
+    if [ -n "${CURRENT_STAGE:-}" ]; then
+        stage_fail "${CURRENT_STAGE}" "${status}"
+    fi
+
+    exit "${status}"
+}
+
+trap 'on_error' ERR
 
 run_stage()
 {
     local name="$1"
-    local status
 
     shift
+
+    CURRENT_STAGE="${name}"
     stage_start
 
-    set +e
+    # 必须在当前 Shell 执行，确保 detect_paths、configure_openresty
+    # 设置的变量能够传递给后续阶段。
+    "$@" >>"${BUILD_LOG}" 2>&1
 
-    (
-        set -e
-        "$@"
-    ) >>"${BUILD_LOG}" 2>&1
+    CURRENT_STAGE=""
 
-    status=$?
-
-    set -e
-
-    if [ "${status}" -eq 0 ]; then
-        stage_ok "${name}"
-    else
-        stage_fail "${name}"
-    fi
+    stage_ok "${name}"
 }
 
 check_environment()

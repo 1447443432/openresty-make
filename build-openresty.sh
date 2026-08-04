@@ -195,7 +195,10 @@ show_progress()
 
         while kill -0 "${pid}" 2>/dev/null; do
             sleep 30
-            echo "[INFO] ${name} is still running..."
+
+            if kill -0 "${pid}" 2>/dev/null; then
+                echo "[INFO] ${name} is still running..."
+            fi
         done
     fi
 }
