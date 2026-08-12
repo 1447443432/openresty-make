@@ -8,6 +8,12 @@ exec 3>&1 4>&2
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${BASE_DIR}"
 
+# Load version specific configuration when available.
+if [ -f "${BASE_DIR}/config/openresty-${OPENRESTY_VERSION}.conf" ]; then
+    # shellcheck disable=SC1090
+    source "${BASE_DIR}/config/openresty-${OPENRESTY_VERSION}.conf"
+fi
+
 OPENRESTY_VERSION="${OPENRESTY_VERSION:?OPENRESTY_VERSION is required}"
 OPENSSL_VERSION="${OPENSSL_VERSION:?OPENSSL_VERSION is required}"
 OPENSSL_PATCH_VERSION="${OPENSSL_PATCH_VERSION:?OPENSSL_PATCH_VERSION is required}"
@@ -158,10 +164,13 @@ check_sources()
     local required=(
         "sources/openresty-${OPENRESTY_VERSION}.tar.gz"
         "sources/openssl-${OPENSSL_VERSION}.tar.gz"
-        "sources/pcre2-${PCRE2_VERSION}.tar.gz"
         "sources/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch"
     )
     local file
+
+    if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
+        required+=("sources/pcre2-${PCRE2_VERSION}.tar.gz")
+    fi
 
     if [ "${ENABLE_SUBSTITUTIONS_FILTER}" = "true" ]; then
         required+=("sources/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz")
@@ -207,7 +216,9 @@ detect_paths()
 
     test -d "${OPENRESTY_SRC}"
     test -d "${OPENSSL_SRC}"
-    test -d "${PCRE2_SRC}"
+    if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
+        test -d "${PCRE2_SRC}"
+    fi
 
     if [ "${ENABLE_SUBSTITUTIONS_FILTER}" = "true" ]; then
         SUB_FILTER_SRC="$(find "${WORK_DIR}/deps" -maxdepth 1 -type d -name 'ngx_http_substitutions_filter_module-*' -print -quit)"
@@ -249,6 +260,10 @@ build_openssl()
 
 build_pcre2()
 {
+    if [ "${ENABLE_PCRE2:-true}" != "true" ]; then
+        return 0
+    fi
+
     cd "${PCRE2_SRC}"
 
     CFLAGS='-g -O3' ./configure \
@@ -270,8 +285,6 @@ configure_openresty()
         -j"${BUILD_JOBS}"
         --prefix="${INSTALL_PREFIX}"
         --with-compat
-        --with-pcre
-        --with-pcre-jit
         "--with-cc-opt=-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
         "--with-ld-opt=-L${PCRE2_PREFIX}/lib -L${OPENSSL_PREFIX}/lib -Wl,-rpath,${PCRE2_PREFIX}/lib:${OPENSSL_PREFIX}/lib"
         --with-http_sub_module
@@ -299,6 +312,13 @@ configure_openresty()
         args+=("--add-module=${UPSTREAM_CHECK_SRC}")
     fi
 
+    if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
+        args+=(
+            --with-pcre
+            --with-pcre-jit
+        )
+    fi
+
     ./configure "${args[@]}"
 
     if [ ! -f "${OPENRESTY_SRC}/Makefile" ]; then
@@ -306,17 +326,8 @@ configure_openresty()
         return 1
     fi
 
-    # OpenResty 1.31.1.1 中的 lua-cjson 使用了 C99 语法。
-    # CentOS 7 的 GCC 4.8.5 默认使用 GNU89，需要显式增加 -std=gnu99。
-    if ! grep -q 'CJSON_CFLAGS="[^"]*-std=gnu99' "${OPENRESTY_SRC}/Makefile"; then
-        sed -i -r \
-            's/(CJSON_CFLAGS="[^"]*)"/\1 -std=gnu99"/g' \
-            "${OPENRESTY_SRC}/Makefile"
-    fi
-
-    if ! grep -q 'CJSON_CFLAGS="[^"]*-std=gnu99' "${OPENRESTY_SRC}/Makefile"; then
-        echo "[ERROR] failed to add -std=gnu99 to CJSON_CFLAGS" >&2
-        return 1
+    if [ "${USE_GCC_WRAPPER:-false}" = "true" ]; then
+        echo "[INFO] gcc wrapper should be used for lua-cjson C99"
     fi
 
     echo "========== lua-cjson compile flags =========="
