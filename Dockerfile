@@ -8,7 +8,14 @@ COPY build.sh ./build.sh
 
 RUN chmod +x ./build.sh
 
-RUN yum install -y patchelf && yum clean all
+RUN curl -fsSL https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0.tar.gz \
+    | tar xz \
+    && cd patchelf-0.18.0 \
+    && ./configure --prefix=/usr/local \
+    && make -j"$(nproc)" \
+    && make install \
+    && cd /data/openresty-make \
+    && rm -rf patchelf-0.18.0
 
 USER root
 
