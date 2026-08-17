@@ -327,7 +327,10 @@ configure_openresty()
     local runtime_rpath
 
     cc_opt="-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
-    runtime_rpath='$ORIGIN/../../luajit/lib:$ORIGIN/../../openssl3/lib:$ORIGIN/../../pcre2/lib'
+    # Keep the RPATH relocatable.  The doubled dollar signs survive make's
+    # expansion, while the single quotes prevent the shell from expanding
+    # ORIGIN during the link step.
+    runtime_rpath="'\$\$ORIGIN/../../luajit/lib:\$\$ORIGIN/../../openssl3/lib:\$\$ORIGIN/../../pcre2/lib'"
     if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
         cc_opt+=" -DNGX_PCRE2"
     fi
@@ -462,25 +465,36 @@ install_openresty()
 verify_binary()
 {
     local ldd_output
+    local version_status
 
     NGINX_BIN="${INSTALL_PREFIX}/nginx/sbin/nginx"
     test -x "${NGINX_BIN}"
 
-    VERSION_INFO="$("${NGINX_BIN}" -V 2>&1)"
-    printf '%s\n' "${VERSION_INFO}"
-
-    grep -q -- '--with-http_stub_status_module' <<<"${VERSION_INFO}"
-
-    if [ "${ENABLE_UPSTREAM_CHECK}" = "true" ]; then
-        grep -q 'nginx_upstream_check_module' <<<"${VERSION_INFO}"
-    fi
-
-    ldd_output="$(ldd "${NGINX_BIN}")"
+    # Print the loader result before nginx -V.  With a missing shared library,
+    # nginx -V exits immediately and set -e otherwise hides the useful ldd
+    # diagnosis.
+    ldd_output="$(ldd "${NGINX_BIN}" 2>&1)" || true
     printf '%s\n' "${ldd_output}"
 
     if grep -q 'not found' <<<"${ldd_output}"; then
         echo "[ERROR] shared library not found" >&2
         return 1
+    fi
+
+    set +e
+    VERSION_INFO="$("${NGINX_BIN}" -V 2>&1)"
+    version_status=$?
+    set -e
+    printf '%s\n' "${VERSION_INFO}"
+    if [ "${version_status}" -ne 0 ]; then
+        echo "[ERROR] nginx -V failed with exit code ${version_status}" >&2
+        return "${version_status}"
+    fi
+
+    grep -q -- '--with-http_stub_status_module' <<<"${VERSION_INFO}"
+
+    if [ "${ENABLE_UPSTREAM_CHECK}" = "true" ]; then
+        grep -q 'nginx_upstream_check_module' <<<"${VERSION_INFO}"
     fi
 }
 
