@@ -310,12 +310,19 @@ EOF
 
 configure_openresty()
 {
+    local cc_opt
+
+    cc_opt="-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
+    if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
+        cc_opt+=" -DNGX_PCRE2"
+    fi
+
     local args=(
         -j"${BUILD_JOBS}"
         --prefix="${INSTALL_PREFIX}"
         "--with-cc=${CC_WRAPPER}"
         --with-compat
-        "--with-cc-opt=-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
+        "--with-cc-opt=${cc_opt}"
         "--with-ld-opt=-L${PCRE2_PREFIX}/lib -L${OPENSSL_PREFIX}/lib -Wl,-rpath,${PCRE2_PREFIX}/lib:${OPENSSL_PREFIX}/lib"
         --with-http_sub_module
         --with-http_ssl_module
