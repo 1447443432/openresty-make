@@ -43,13 +43,14 @@ fi
 
 OPENRESTY_VERSION="$(scripts/resolve-version.sh "${VERSION_ARG}")"
 
-VERSION_CONFIG="${BASE_DIR}/config/openresty-${OPENRESTY_VERSION}.conf"
+VERSION_FAMILY="$(printf '%s' "${OPENRESTY_VERSION}" | awk -F. '{print $1 "." $2}')"
+VERSION_CONFIG="${BASE_DIR}/config/openresty-${VERSION_FAMILY}.conf"
 if [ -f "${VERSION_CONFIG}" ]; then
     # shellcheck disable=SC1090
     source "${VERSION_CONFIG}"
 fi
 
-SOURCE_DIR="${SOURCE_DIR:-${SOURCE_ROOT}/${OPENRESTY_VERSION}}"
+SOURCE_DIR="${SOURCE_DIR:-${SOURCE_ROOT}/${VERSION_FAMILY}}"
 
 eval "$(scripts/resolve-deps.sh)"
 

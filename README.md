@@ -22,14 +22,18 @@ openresty-make/
 ├── .github/workflows/build-openresty.yml
 ├── config/
 │   ├── build.conf
-│   └── openresty-version.conf
+│   ├── openresty-version.conf
+│   ├── openresty-1.25.conf
+│   └── openresty-1.31.conf
 ├── examples/status.conf
 ├── output/.gitkeep
 ├── scripts/
 │   ├── resolve-deps.sh
 │   ├── resolve-version.sh
 │   └── self-check.sh
-├── sources/.gitkeep
+├── sources/
+│   ├── 1.25/
+│   └── 1.31/
 ├── Dockerfile
 ├── build-openresty.sh
 ├── build.sh
@@ -38,7 +42,22 @@ openresty-make/
 
 ## 版本策略
 
-`config/openresty-version.conf` 默认配置：
+`config/openresty-version.conf` 负责默认版本和 latest 回退；具体兼容参数按 `主版本.次版本` 配置。例如：
+
+```text
+1.25.x -> config/openresty-1.25.conf -> sources/1.25/
+1.31.x -> config/openresty-1.31.conf -> sources/1.31/
+```
+
+因此 `1.31.2` 会自动复用 `1.31.x` 的 OpenSSL、PCRE2 和模块策略，只需将：
+
+```text
+sources/1.31/openresty-1.31.2.tar.gz
+```
+
+放入仓库即可。
+
+默认配置：
 
 ```bash
 OPENRESTY_VERSION=${OPENRESTY_VERSION:-latest}
@@ -52,7 +71,7 @@ ALLOW_LATEST_FALLBACK=${ALLOW_LATEST_FALLBACK:-true}
 https://openresty.org/en/download.html
 ```
 
-因此将来发布 `1.31.1.2`、`1.33.x.x` 等新版本后，不需要改构建脚本，可以直接手动执行 Workflow，或继续使用 `latest`。
+因此同一兼容系列发布新版本后，不需要新增配置文件或修改构建脚本；只需补充对应的 OpenResty 源码包。若新版本需要不同依赖或补丁，再新增对应的 `config/openresty-X.Y.conf` 系列配置。
 
 固定版本构建：
 

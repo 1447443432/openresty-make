@@ -8,10 +8,11 @@ exec 3>&1 4>&2
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${BASE_DIR}"
 
-# Load version specific configuration when available.
-if [ -f "${BASE_DIR}/config/openresty-${OPENRESTY_VERSION}.conf" ]; then
+# Load version-family configuration when available.
+VERSION_FAMILY="$(printf '%s' "${OPENRESTY_VERSION}" | awk -F. '{print $1 "." $2}')"
+if [ -f "${BASE_DIR}/config/openresty-${VERSION_FAMILY}.conf" ]; then
     # shellcheck disable=SC1090
-    source "${BASE_DIR}/config/openresty-${OPENRESTY_VERSION}.conf"
+    source "${BASE_DIR}/config/openresty-${VERSION_FAMILY}.conf"
 fi
 
 OPENRESTY_VERSION="${OPENRESTY_VERSION:?OPENRESTY_VERSION is required}"
@@ -32,7 +33,7 @@ WORK_DIR="${BASE_DIR}/work"
 INSTALL_PREFIX="${INSTALL_PREFIX:-/usr/local/openresty}"
 OPENSSL_PREFIX="${INSTALL_PREFIX}/openssl3"
 PCRE2_PREFIX="${INSTALL_PREFIX}/pcre2"
-SOURCE_DIR="${BASE_DIR}/sources/${OPENRESTY_VERSION}"
+SOURCE_DIR="${BASE_DIR}/sources/${VERSION_FAMILY}"
 PCRE2_ARCHIVE="${SOURCE_DIR}/pcre2-${PCRE2_VERSION}.tar.gz"
 if [ ! -f "${PCRE2_ARCHIVE}" ]; then
     PCRE2_ARCHIVE="${SOURCE_DIR}/pcre2-${PCRE2_VERSION}.tar.bz2"
