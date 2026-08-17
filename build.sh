@@ -36,6 +36,8 @@ BUILD_LOG="${OUTPUT_DIR}/build.log"
 STAGE_LOG="${OUTPUT_DIR}/stage-time.log"
 BUILD_INFO="${OUTPUT_DIR}/build-info.txt"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
+TOOLCHAIN_DIR="${WORK_DIR}/toolchain"
+CC_WRAPPER="${TOOLCHAIN_DIR}/gcc-gnu99"
 
 mkdir -p "${OUTPUT_DIR}"
 : >"${BUILD_LOG}"
@@ -279,11 +281,39 @@ build_pcre2()
     CFLAGS='-g -O3' make -j"${BUILD_JOBS}" install
 }
 
+prepare_toolchain()
+{
+    local test_source
+
+    mkdir -p "${TOOLCHAIN_DIR}"
+
+    cat >"${CC_WRAPPER}" <<'EOF'
+#!/bin/sh
+exec /usr/bin/gcc -std=gnu99 "$@"
+EOF
+    chmod +x "${CC_WRAPPER}"
+
+    test_source="${TOOLCHAIN_DIR}/test-c99.c"
+    cat >"${test_source}" <<'EOF'
+int main(void)
+{
+    for (int i = 0; i < 1; i++) {
+    }
+    return 0;
+}
+EOF
+
+    "${CC_WRAPPER}" "${test_source}" -o "${TOOLCHAIN_DIR}/test-c99"
+    "${TOOLCHAIN_DIR}/test-c99"
+    echo "[OK] gcc wrapper supports gnu99"
+}
+
 configure_openresty()
 {
     local args=(
         -j"${BUILD_JOBS}"
         --prefix="${INSTALL_PREFIX}"
+        "--with-cc=${CC_WRAPPER}"
         --with-compat
         "--with-cc-opt=-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
         "--with-ld-opt=-L${PCRE2_PREFIX}/lib -L${OPENSSL_PREFIX}/lib -Wl,-rpath,${PCRE2_PREFIX}/lib:${OPENSSL_PREFIX}/lib"
@@ -324,10 +354,6 @@ configure_openresty()
     if [ ! -f "${OPENRESTY_SRC}/Makefile" ]; then
         echo "[ERROR] OpenResty Makefile was not generated" >&2
         return 1
-    fi
-
-    if [ "${USE_GCC_WRAPPER:-false}" = "true" ]; then
-        echo "[INFO] gcc wrapper should be used for lua-cjson C99"
     fi
 
     echo "========== lua-cjson compile flags =========="
@@ -574,6 +600,7 @@ main()
     run_stage 'prepare install prefix' prepare_install_prefix
     run_stage 'build openssl' build_openssl
     run_stage 'build pcre2' build_pcre2
+    run_stage 'prepare gcc gnu99 wrapper' prepare_toolchain
     run_stage 'configure openresty' configure_openresty
     run_stage 'apply upstream check patch' apply_upstream_check_patch
     run_stage 'compile openresty' compile_openresty
