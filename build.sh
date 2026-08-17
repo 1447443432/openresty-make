@@ -144,7 +144,8 @@ check_environment()
         autoconf \
         automake \
         libtool \
-        pkg-config
+        pkg-config \
+        patchelf
     do
         if ! command -v "${command_name}" >/dev/null 2>&1; then
             echo "[ERROR] missing command: ${command_name}" >&2
@@ -324,12 +325,8 @@ EOF
 configure_openresty()
 {
     local cc_opt
-    local runtime_rpath
 
     cc_opt="-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
-    # OpenResty itself embeds the install prefix for LuaJIT.  Keep all bundled
-    # runtime libraries on that same stable CentOS installation path.
-    runtime_rpath="${INSTALL_PREFIX}/luajit/lib:${INSTALL_PREFIX}/openssl3/lib:${INSTALL_PREFIX}/pcre2/lib"
     if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
         cc_opt+=" -DNGX_PCRE2"
     fi
@@ -340,7 +337,7 @@ configure_openresty()
         "--with-cc=${CC_WRAPPER}"
         --with-compat
         "--with-cc-opt=${cc_opt}"
-        "--with-ld-opt=-L${PCRE2_PREFIX}/lib -L${OPENSSL_PREFIX}/lib -Wl,-rpath,${runtime_rpath}"
+        "--with-ld-opt=-L${PCRE2_PREFIX}/lib -L${OPENSSL_PREFIX}/lib"
         --with-http_sub_module
         --with-http_ssl_module
         --with-http_v2_module
@@ -459,6 +456,15 @@ install_openresty()
     # OPENSSL_PREFIX 和 PCRE2_PREFIX 都位于 INSTALL_PREFIX 下，
     # 这里不能再次删除 INSTALL_PREFIX。
     make install
+}
+
+set_relative_rpath()
+{
+    local nginx_bin="${INSTALL_PREFIX}/nginx/sbin/nginx"
+    local rpath='$ORIGIN/../../luajit/lib:$ORIGIN/../../openssl3/lib:$ORIGIN/../../pcre2/lib'
+
+    patchelf --set-rpath "${rpath}" "${nginx_bin}"
+    test "$(patchelf --print-rpath "${nginx_bin}")" = "${rpath}"
 }
 
 verify_binary()
@@ -637,6 +643,7 @@ main()
     run_stage 'apply upstream check patch' apply_upstream_check_patch
     run_stage 'compile openresty' compile_openresty
     run_stage 'install openresty' install_openresty
+    run_stage 'set relative runtime rpath' set_relative_rpath
     run_stage 'verify binary' verify_binary
     run_stage 'verify directives' verify_directives
     run_stage 'package openresty' package_openresty

@@ -8,6 +8,8 @@ COPY build.sh ./build.sh
 
 RUN chmod +x ./build.sh
 
+RUN yum install -y patchelf && yum clean all
+
 USER root
 
 ENTRYPOINT ["./build.sh"]
