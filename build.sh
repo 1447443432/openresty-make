@@ -212,7 +212,10 @@ extract_sources()
 
     tar xf "${SOURCE_DIR}/openresty-${OPENRESTY_VERSION}.tar.gz" -C "${WORK_DIR}"
     tar xf "${SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz" -C "${WORK_DIR}/deps"
-    tar xf "${PCRE2_ARCHIVE}" -C "${WORK_DIR}/deps"
+
+    if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
+        tar xf "${PCRE2_ARCHIVE}" -C "${WORK_DIR}/deps"
+    fi
 
     if [ "${ENABLE_SUBSTITUTIONS_FILTER}" = "true" ]; then
         tar xf "${SOURCE_DIR}/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz" -C "${WORK_DIR}/deps"
