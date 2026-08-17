@@ -4,6 +4,7 @@ FROM ${BUILDER_IMAGE}
 WORKDIR /data/openresty-make
 
 COPY sources ./sources
+COPY config ./config
 COPY build.sh ./build.sh
 
 RUN chmod +x ./build.sh
