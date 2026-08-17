@@ -1,4 +1,4 @@
-ARG BUILDER_IMAGE
+ARG BUILDER_IMAGE=registry.cn-shanghai.aliyuncs.com/jing-images/linux_amd64_centos_builder:7.9-openresty-1.0.0
 FROM ${BUILDER_IMAGE}
 
 WORKDIR /data/openresty-make
