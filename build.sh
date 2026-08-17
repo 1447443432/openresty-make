@@ -324,8 +324,10 @@ EOF
 configure_openresty()
 {
     local cc_opt
+    local runtime_rpath
 
     cc_opt="-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
+    runtime_rpath='$ORIGIN/../../luajit/lib:$ORIGIN/../../openssl3/lib:$ORIGIN/../../pcre2/lib'
     if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
         cc_opt+=" -DNGX_PCRE2"
     fi
@@ -336,7 +338,7 @@ configure_openresty()
         "--with-cc=${CC_WRAPPER}"
         --with-compat
         "--with-cc-opt=${cc_opt}"
-        "--with-ld-opt=-L${PCRE2_PREFIX}/lib -L${OPENSSL_PREFIX}/lib -Wl,-rpath,${PCRE2_PREFIX}/lib:${OPENSSL_PREFIX}/lib"
+        "--with-ld-opt=-L${PCRE2_PREFIX}/lib -L${OPENSSL_PREFIX}/lib -Wl,-rpath,${runtime_rpath}"
         --with-http_sub_module
         --with-http_ssl_module
         --with-http_v2_module
