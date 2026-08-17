@@ -327,10 +327,9 @@ configure_openresty()
     local runtime_rpath
 
     cc_opt="-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
-    # Escape the dollar for the generated Makefile and the link shell.  This
-    # must remain a literal $ORIGIN in the ELF RUNPATH, otherwise CentOS 7
-    # cannot locate the bundled OpenSSL and PCRE2 libraries after extraction.
-    runtime_rpath='\$ORIGIN/../../luajit/lib:\$ORIGIN/../../openssl3/lib:\$ORIGIN/../../pcre2/lib'
+    # Makefile -> shell -> ld needs two levels of escaping here.  The final
+    # ELF RUNPATH must contain the literal $ORIGIN token.
+    runtime_rpath='\\$$ORIGIN/../../luajit/lib:\\$$ORIGIN/../../openssl3/lib:\\$$ORIGIN/../../pcre2/lib'
     if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
         cc_opt+=" -DNGX_PCRE2"
     fi
