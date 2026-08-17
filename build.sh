@@ -327,9 +327,9 @@ configure_openresty()
     local runtime_rpath
 
     cc_opt="-O2 -DNGX_LUA_ABORT_AT_PANIC -I${PCRE2_PREFIX}/include -I${OPENSSL_PREFIX}/include"
-    # Makefile -> shell -> ld needs two levels of escaping here.  The final
-    # ELF RUNPATH must contain the literal $ORIGIN token.
-    runtime_rpath='\\$$ORIGIN/../../luajit/lib:\\$$ORIGIN/../../openssl3/lib:\\$$ORIGIN/../../pcre2/lib'
+    # OpenResty itself embeds the install prefix for LuaJIT.  Keep all bundled
+    # runtime libraries on that same stable CentOS installation path.
+    runtime_rpath="${INSTALL_PREFIX}/luajit/lib:${INSTALL_PREFIX}/openssl3/lib:${INSTALL_PREFIX}/pcre2/lib"
     if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
         cc_opt+=" -DNGX_PCRE2"
     fi
