@@ -134,6 +134,8 @@ download_file()
 
 prepare_sources()
 {
+    local sub_filter_url
+
     download_file \
         "https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz" \
         "${SOURCE_DIR}/openresty-${OPENRESTY_VERSION}.tar.gz"
@@ -151,8 +153,14 @@ prepare_sources()
         "${SOURCE_DIR}/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch"
 
     if [ "${ENABLE_SUBSTITUTIONS_FILTER}" = "true" ]; then
+        if [[ "${SUB_FILTER_VERSION}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            sub_filter_url="https://codeload.github.com/yaoweibin/ngx_http_substitutions_filter_module/tar.gz/${SUB_FILTER_VERSION}"
+        else
+            sub_filter_url="https://codeload.github.com/yaoweibin/ngx_http_substitutions_filter_module/tar.gz/refs/tags/v${SUB_FILTER_VERSION}"
+        fi
+
         download_file \
-            "https://codeload.github.com/yaoweibin/ngx_http_substitutions_filter_module/tar.gz/refs/tags/v${SUB_FILTER_VERSION}" \
+            "${sub_filter_url}" \
             "${SOURCE_DIR}/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz"
     fi
 
