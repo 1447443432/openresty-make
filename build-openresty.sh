@@ -43,6 +43,12 @@ fi
 
 OPENRESTY_VERSION="$(scripts/resolve-version.sh "${VERSION_ARG}")"
 
+VERSION_CONFIG="${BASE_DIR}/config/openresty-${OPENRESTY_VERSION}.conf"
+if [ -f "${VERSION_CONFIG}" ]; then
+    # shellcheck disable=SC1090
+    source "${VERSION_CONFIG}"
+fi
+
 eval "$(scripts/resolve-deps.sh)"
 
 ENABLE_UPSTREAM_CHECK="${ENABLE_UPSTREAM_CHECK:-true}"
