@@ -258,6 +258,27 @@ prepare_install_prefix()
 build_openssl()
 {
     local patch_file
+    local openssl_args
+
+    openssl_args=(
+        shared
+        zlib
+        -g
+        "--prefix=${OPENSSL_PREFIX}"
+        --libdir=lib
+        "-Wl,-rpath,${OPENSSL_PREFIX}/lib"
+        enable-camellia
+        enable-seed
+        enable-rfc3779
+        enable-cms
+        enable-weak-ssl-ciphers
+        enable-ssl3
+        enable-ssl3-method
+    )
+
+    if [[ "${OPENSSL_VERSION}" == 3.* ]]; then
+        openssl_args+=(enable-ktls enable-fips)
+    fi
 
     cd "${OPENSSL_SRC}"
     if [ "${ENABLE_OPENSSL_PATCH}" = "true" ]; then
@@ -266,12 +287,7 @@ build_openssl()
         patch --forward -p1 <"${patch_file}"
     fi
 
-    ./config shared zlib -g \
-        --prefix="${OPENSSL_PREFIX}" \
-        --libdir=lib \
-        -Wl,-rpath,"${OPENSSL_PREFIX}/lib" \
-        enable-camellia enable-seed enable-rfc3779 enable-cms enable-weak-ssl-ciphers \
-        enable-ssl3 enable-ssl3-method enable-ktls enable-fips
+    ./config "${openssl_args[@]}"
 
     make -j"${BUILD_JOBS}"
     make -j"${BUILD_JOBS}" install_sw
