@@ -103,6 +103,18 @@ jobs:
             "upstream_check=${ENABLE_CHECK}" \
             "upstream_check_ref=${CHECK_REF}"
 
+          {
+            echo "## OpenResty build configuration"
+            echo
+            echo "- OpenResty: `${VERSION}`"
+            echo "- OpenSSL: `${OPENSSL_VERSION}`"
+            echo "- OpenSSL patch: `${OPENSSL_PATCH_VERSION}`"
+            echo "- PCRE2: `${PCRE2_VERSION}`"
+            echo "- Upstream check: `${ENABLE_CHECK}`"
+            echo "- Upstream check ref: `${CHECK_REF}`"
+            echo "- Architectures: `amd64`, `arm64`"
+          } >>"${GITHUB_STEP_SUMMARY}"
+
   build-amd64:
     name: Build OpenResty amd64
     needs: resolve
@@ -124,6 +136,23 @@ jobs:
           set -euo pipefail
           chmod +x build-openresty.sh build.sh scripts/*.sh
           ./build-openresty.sh amd64 "${{ needs.resolve.outputs.openresty_version }}"
+
+      - name: Show amd64 build output
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "========== amd64 output =========="
+          if [ -d output ]; then
+            find output -maxdepth 1 -type f -printf '%f\n' | sort
+            ls -lh output
+          else
+            echo "output directory not found"
+          fi
+          if [ -f output/build-info.txt ]; then
+            echo "========== amd64 build info =========="
+            cat output/build-info.txt
+          fi
 
       - name: Verify SHA256
         shell: bash
@@ -165,6 +194,23 @@ jobs:
           set -euo pipefail
           chmod +x build-openresty.sh build.sh scripts/*.sh
           ./build-openresty.sh arm64 "${{ needs.resolve.outputs.openresty_version }}"
+
+      - name: Show arm64 build output
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "========== arm64 output =========="
+          if [ -d output ]; then
+            find output -maxdepth 1 -type f -printf '%f\n' | sort
+            ls -lh output
+          else
+            echo "output directory not found"
+          fi
+          if [ -f output/build-info.txt ]; then
+            echo "========== arm64 build info =========="
+            cat output/build-info.txt
+          fi
 
       - name: Verify SHA256
         shell: bash
@@ -226,6 +272,7 @@ jobs:
           ls -lh release
 
       - name: Create or update Release
+        id: create_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
@@ -240,6 +287,30 @@ jobs:
             nginx_upstream_check_module: ${{ needs.resolve.outputs.enable_upstream_check }}
           files: |
             release/*
+
+      - name: Show Release information
+        shell: bash
+        env:
+          RELEASE_URL: ${{ steps.create_release.outputs.url }}
+          RELEASE_ASSETS: ${{ steps.create_release.outputs.assets }}
+        run: |
+          set -euo pipefail
+          echo "repository=${GITHUB_REPOSITORY}"
+          echo "release_tag=${{ steps.tag.outputs.tag }}"
+          echo "release_url=${RELEASE_URL}"
+          echo "========== release assets =========="
+          jq -r '.[] | "\(.name) -> \(.browser_download_url)"' <<<"${RELEASE_ASSETS}"
+          {
+            echo "## Release"
+            echo
+            echo "- Repository: `${GITHUB_REPOSITORY}`"
+            echo "- Tag: `${{ steps.tag.outputs.tag }}`"
+            echo "- URL: ${RELEASE_URL}"
+            echo
+            echo "| Asset | Download URL |"
+            echo "|---|---|"
+            jq -r '.[] | "| \(.name) | \(.browser_download_url) |"' <<<"${RELEASE_ASSETS}"
+          } >>"${GITHUB_STEP_SUMMARY}"
 
   sync-hap:
     name: Sync Release to HAP
@@ -262,6 +333,22 @@ jobs:
             echo "enabled=true" >>"${GITHUB_OUTPUT}"
           else
             echo "enabled=false" >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Show HAP sync status
+        shell: bash
+        env:
+          HAP_ENABLED: ${{ steps.hap.outputs.enabled }}
+        run: |
+          set -euo pipefail
+          if [ "${HAP_ENABLED}" = "true" ]; then
+            echo "HAP sync enabled"
+            echo "## HAP sync: enabled" >>"${GITHUB_STEP_SUMMARY}"
+          else
+            echo "HAP_WEBHOOK_URL is not configured; skip HAP sync"
+            echo "## HAP sync: skipped" >>"${GITHUB_STEP_SUMMARY}"
+            echo >>"${GITHUB_STEP_SUMMARY}"
+            echo "HAP_WEBHOOK_URL is not configured." >>"${GITHUB_STEP_SUMMARY}"
           fi
 
       - name: Download artifacts
