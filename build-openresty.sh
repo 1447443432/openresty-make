@@ -56,6 +56,7 @@ OPENRESTY_PATCH_REF="${OPENRESTY_PATCH_REF:-master}"
 
 IMAGE_NAME="openresty-builder:${OPENRESTY_VERSION}-${ARCH}"
 DOCKER_LOG="${OUTPUT_DIR}/docker-build-${ARCH}.log"
+DOCKER_RUN_LOG="${OUTPUT_DIR}/docker-run-${ARCH}.log"
 
 validate_bool()
 {
@@ -273,6 +274,12 @@ run_long_stage()
             echo "==========================================="
         fi
 
+        if [ -f "${DOCKER_RUN_LOG}" ]; then
+            echo "========== last Docker run log =========="
+            tail -160 "${DOCKER_RUN_LOG}" || true
+            echo "=========================================="
+        fi
+
         exit "${status}"
     fi
 }
@@ -435,7 +442,8 @@ docker_run()
         -e "UPSTREAM_CHECK_REF=${UPSTREAM_CHECK_REF}" \
         -e "UPSTREAM_CHECK_PATCH=${UPSTREAM_CHECK_PATCH}" \
         -v "${OUTPUT_DIR}:${CONTAINER_OUTPUT_DIR}" \
-        "${IMAGE_NAME}"
+        "${IMAGE_NAME}" \
+        >"${DOCKER_RUN_LOG}" 2>&1
 }
 
 check_result()
