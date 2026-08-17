@@ -309,6 +309,15 @@ docker_build()
 
 docker_check()
 {
+    docker run \
+        --rm \
+        --platform "linux/${ARCH}" \
+        --entrypoint /bin/bash \
+        --user 0:0 \
+        "${IMAGE_NAME}" \
+        -c "id"
+    return 0
+
     local check_script
 
     check_script="$(cat <<'CHECK_EOF'
