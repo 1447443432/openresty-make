@@ -8,7 +8,7 @@ ARCH="${1:-amd64}"
 VERSION_ARG="${2:-}"
 
 OUTPUT_DIR="${OUTPUT_DIR:-${BASE_DIR}/output}"
-SOURCE_DIR="${SOURCE_DIR:-${BASE_DIR}/sources}"
+SOURCE_ROOT="${SOURCE_ROOT:-${BASE_DIR}/sources}"
 CONTAINER_OUTPUT_DIR="${CONTAINER_OUTPUT_DIR:-/output}"
 
 DOCKER_NO_CACHE="${DOCKER_NO_CACHE:-true}"
@@ -48,6 +48,8 @@ if [ -f "${VERSION_CONFIG}" ]; then
     # shellcheck disable=SC1090
     source "${VERSION_CONFIG}"
 fi
+
+SOURCE_DIR="${SOURCE_DIR:-${SOURCE_ROOT}/${OPENRESTY_VERSION}}"
 
 eval "$(scripts/resolve-deps.sh)"
 
@@ -144,13 +146,23 @@ prepare_sources()
         "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
         "${SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz"
 
-    download_file \
-        "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz" \
-        "${SOURCE_DIR}/pcre2-${PCRE2_VERSION}.tar.gz"
+    if [ "${ENABLE_OPENSSL_PATCH}" = "true" ]; then
+        download_file \
+            "https://raw.githubusercontent.com/openresty/openresty/${OPENRESTY_PATCH_REF}/patches/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch" \
+            "${SOURCE_DIR}/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch"
+    fi
 
-    download_file \
-        "https://raw.githubusercontent.com/openresty/openresty/${OPENRESTY_PATCH_REF}/patches/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch" \
-        "${SOURCE_DIR}/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch"
+    if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
+        if [ -s "${SOURCE_DIR}/pcre2-${PCRE2_VERSION}.tar.gz" ]; then
+            echo "[OK] use cached source: pcre2-${PCRE2_VERSION}.tar.gz"
+        elif [ -s "${SOURCE_DIR}/pcre2-${PCRE2_VERSION}.tar.bz2" ]; then
+            echo "[OK] use cached source: pcre2-${PCRE2_VERSION}.tar.bz2"
+        else
+            download_file \
+                "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz" \
+                "${SOURCE_DIR}/pcre2-${PCRE2_VERSION}.tar.gz"
+        fi
+    fi
 
     if [ "${ENABLE_SUBSTITUTIONS_FILTER}" = "true" ]; then
         if [[ "${SUB_FILTER_VERSION}" =~ ^[0-9a-fA-F]{40}$ ]]; then
@@ -457,6 +469,7 @@ docker_run()
         -e "OPENRESTY_VERSION=${OPENRESTY_VERSION}" \
         -e "OPENSSL_VERSION=${OPENSSL_VERSION}" \
         -e "OPENSSL_PATCH_VERSION=${OPENSSL_PATCH_VERSION}" \
+        -e "ENABLE_OPENSSL_PATCH=${ENABLE_OPENSSL_PATCH}" \
         -e "PCRE2_VERSION=${PCRE2_VERSION}" \
         -e "PCRE2_SHA256=${PCRE2_SHA256}" \
         -e "ENABLE_SUBSTITUTIONS_FILTER=${ENABLE_SUBSTITUTIONS_FILTER}" \

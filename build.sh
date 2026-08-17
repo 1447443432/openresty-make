@@ -21,6 +21,7 @@ PCRE2_VERSION="${PCRE2_VERSION:?PCRE2_VERSION is required}"
 PCRE2_SHA256="${PCRE2_SHA256:?PCRE2_SHA256 is required}"
 
 ENABLE_SUBSTITUTIONS_FILTER="${ENABLE_SUBSTITUTIONS_FILTER:-true}"
+ENABLE_OPENSSL_PATCH="${ENABLE_OPENSSL_PATCH:-true}"
 SUB_FILTER_VERSION="${SUB_FILTER_VERSION:-0.6.4}"
 ENABLE_UPSTREAM_CHECK="${ENABLE_UPSTREAM_CHECK:-true}"
 UPSTREAM_CHECK_REF="${UPSTREAM_CHECK_REF:-87bfa66ddf16c17053ba7bbae72400c9939ecf6d}"
@@ -31,6 +32,11 @@ WORK_DIR="${BASE_DIR}/work"
 INSTALL_PREFIX="${INSTALL_PREFIX:-/usr/local/openresty}"
 OPENSSL_PREFIX="${INSTALL_PREFIX}/openssl3"
 PCRE2_PREFIX="${INSTALL_PREFIX}/pcre2"
+SOURCE_DIR="${BASE_DIR}/sources/${OPENRESTY_VERSION}"
+PCRE2_ARCHIVE="${SOURCE_DIR}/pcre2-${PCRE2_VERSION}.tar.gz"
+if [ ! -f "${PCRE2_ARCHIVE}" ]; then
+    PCRE2_ARCHIVE="${SOURCE_DIR}/pcre2-${PCRE2_VERSION}.tar.bz2"
+fi
 
 BUILD_LOG="${OUTPUT_DIR}/build.log"
 STAGE_LOG="${OUTPUT_DIR}/stage-time.log"
@@ -164,22 +170,25 @@ check_environment()
 check_sources()
 {
     local required=(
-        "sources/openresty-${OPENRESTY_VERSION}.tar.gz"
-        "sources/openssl-${OPENSSL_VERSION}.tar.gz"
-        "sources/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch"
+        "${SOURCE_DIR}/openresty-${OPENRESTY_VERSION}.tar.gz"
+        "${SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz"
     )
     local file
 
+    if [ "${ENABLE_OPENSSL_PATCH}" = "true" ]; then
+        required+=("${SOURCE_DIR}/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch")
+    fi
+
     if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
-        required+=("sources/pcre2-${PCRE2_VERSION}.tar.gz")
+        required+=("${PCRE2_ARCHIVE}")
     fi
 
     if [ "${ENABLE_SUBSTITUTIONS_FILTER}" = "true" ]; then
-        required+=("sources/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz")
+        required+=("${SOURCE_DIR}/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz")
     fi
 
     if [ "${ENABLE_UPSTREAM_CHECK}" = "true" ]; then
-        required+=("sources/nginx_upstream_check_module-${UPSTREAM_CHECK_REF}.tar.gz")
+        required+=("${SOURCE_DIR}/nginx_upstream_check_module-${UPSTREAM_CHECK_REF}.tar.gz")
     fi
 
     for file in "${required[@]}"; do
@@ -189,7 +198,9 @@ check_sources()
         fi
     done
 
-    echo "${PCRE2_SHA256}  sources/pcre2-${PCRE2_VERSION}.tar.gz" | sha256sum -c -
+    if [ "${ENABLE_PCRE2:-true}" = "true" ]; then
+        echo "${PCRE2_SHA256}  ${PCRE2_ARCHIVE}" | sha256sum -c -
+    fi
 }
 
 extract_sources()
@@ -197,16 +208,16 @@ extract_sources()
     rm -rf "${WORK_DIR}"
     mkdir -p "${WORK_DIR}/deps"
 
-    tar zxf "sources/openresty-${OPENRESTY_VERSION}.tar.gz" -C "${WORK_DIR}"
-    tar zxf "sources/openssl-${OPENSSL_VERSION}.tar.gz" -C "${WORK_DIR}/deps"
-    tar zxf "sources/pcre2-${PCRE2_VERSION}.tar.gz" -C "${WORK_DIR}/deps"
+    tar xf "${SOURCE_DIR}/openresty-${OPENRESTY_VERSION}.tar.gz" -C "${WORK_DIR}"
+    tar xf "${SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz" -C "${WORK_DIR}/deps"
+    tar xf "${PCRE2_ARCHIVE}" -C "${WORK_DIR}/deps"
 
     if [ "${ENABLE_SUBSTITUTIONS_FILTER}" = "true" ]; then
-        tar zxf "sources/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz" -C "${WORK_DIR}/deps"
+        tar xf "${SOURCE_DIR}/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz" -C "${WORK_DIR}/deps"
     fi
 
     if [ "${ENABLE_UPSTREAM_CHECK}" = "true" ]; then
-        tar zxf "sources/nginx_upstream_check_module-${UPSTREAM_CHECK_REF}.tar.gz" -C "${WORK_DIR}/deps"
+        tar xf "${SOURCE_DIR}/nginx_upstream_check_module-${UPSTREAM_CHECK_REF}.tar.gz" -C "${WORK_DIR}/deps"
     fi
 }
 
@@ -244,10 +255,11 @@ build_openssl()
     local patch_file
 
     cd "${OPENSSL_SRC}"
-    patch_file="${BASE_DIR}/sources/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch"
-
-    patch --dry-run --forward -p1 <"${patch_file}"
-    patch --forward -p1 <"${patch_file}"
+    if [ "${ENABLE_OPENSSL_PATCH}" = "true" ]; then
+        patch_file="${SOURCE_DIR}/openssl-${OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch"
+        patch --dry-run --forward -p1 <"${patch_file}"
+        patch --forward -p1 <"${patch_file}"
+    fi
 
     ./config shared zlib -g \
         --prefix="${OPENSSL_PREFIX}" \
