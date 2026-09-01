@@ -73,6 +73,32 @@ https://openresty.org/en/download.html
 
 因此同一兼容系列发布新版本后，不需要新增配置文件或修改构建脚本；只需补充对应的 OpenResty 源码包。若新版本需要不同依赖或补丁，再新增对应的 `config/openresty-X.Y.conf` 系列配置。
 
+### 源码包归类
+
+源码包按 OpenResty 的 `主版本.次版本` 归类，不能把所有包直接混放在 `sources/` 根目录：
+
+```text
+sources/
+├── 1.25/
+│   ├── openresty-1.25.3.1.tar.gz
+│   ├── openssl-1.1.1w.tar.gz
+│   └── ngx_http_substitutions_filter_module-0.6.4.tar.gz
+└── 1.31/
+    ├── openresty-1.31.1.1.tar.gz
+    ├── openssl-3.5.6.tar.gz
+    ├── pcre2-10.47.tar.bz2
+    └── ngx_http_substitutions_filter_module-e12e965ac1837ca709709f9a26f572a54d83430e.tar.gz
+```
+
+构建时会根据 OpenResty 版本选择对应目录和配置：
+
+```text
+1.25.3.1 -> config/openresty-1.25.conf -> sources/1.25/
+1.31.1.1 -> config/openresty-1.31.conf -> sources/1.31/
+```
+
+依赖包的文件名必须与配置和构建脚本解析出的名称一致。包已提交到 `sources/` 后，构建会优先使用本地缓存；缺少的模块包才会尝试从远程下载。
+
 固定版本构建：
 
 ```bash
@@ -258,6 +284,20 @@ openresty_version: 留空、latest 或具体版本
 upstream_check_ref: 可选，模块分支、Tag 或 Commit
 ```
 
+要构建指定版本，应使用手动触发：
+
+```text
+Actions
+→ Build OpenResty
+→ Run workflow
+→ Branch: master
+→ OpenResty version: 1.25.3.1
+→ enable_upstream_check: false
+→ Run workflow
+```
+
+`OpenResty version` 也可以填写 `1.31.1.1` 或 `latest`。留空时使用 `config/openresty-version.conf` 中的默认版本。普通 `git push` 使用默认版本，不会自动切换到 1.25 系列。
+
 构建流程：
 
 ```text
@@ -353,6 +393,55 @@ tar zxf openresty-1.31.1.1-glibc2.17-amd64.tar.gz -C /usr/local
 ```bash
 ldd /usr/local/openresty/nginx/sbin/nginx | grep 'not found' || true
 ```
+
+## 动态库相对路径与 CentOS 7 兼容
+
+安装包以 CentOS 7 Builder 构建，运行时基线为 glibc 2.17。OpenResty 使用的 LuaJIT、PCRE2、OpenSSL 动态库随安装包一起提供：
+
+```text
+openresty/
+├── nginx/sbin/nginx
+├── luajit/lib/libluajit-5.1.so.2
+├── pcre2/lib/libpcre2-8.so.0
+└── openssl3/lib/libssl.so.3
+                  libcrypto.so.3
+```
+
+安装完成后，构建脚本使用 Builder 镜像中已有的 `patchelf`，给 nginx 写入 ELF 相对 RPATH：
+
+```bash
+patchelf --set-rpath \
+  '$ORIGIN/../../luajit/lib:$ORIGIN/../../openssl3/lib:$ORIGIN/../../pcre2/lib' \
+  /usr/local/openresty/nginx/sbin/nginx
+```
+
+这里的 `$ORIGIN` 表示当前可执行文件所在目录。以 `nginx/sbin/nginx` 为起点：
+
+```text
+$ORIGIN/../../luajit/lib  -> openresty/luajit/lib
+$ORIGIN/../../openssl3/lib -> openresty/openssl3/lib
+$ORIGIN/../../pcre2/lib   -> openresty/pcre2/lib
+```
+
+因此运行时不依赖 `LD_LIBRARY_PATH`，也不需要把库复制到 `/lib64` 或 `/usr/local/lib`；解压到其他目录也能找到依赖。
+
+验证方式：
+
+```bash
+ldd openresty/nginx/sbin/nginx
+openresty/nginx/sbin/nginx -V
+```
+
+`ldd` 中应能看到类似以下相对路径解析结果，并且不能出现 `not found`：
+
+```text
+libluajit-5.1.so.2 => .../openresty/nginx/sbin/../../luajit/lib/...
+libpcre2-8.so.0    => .../openresty/nginx/sbin/../../pcre2/lib/...
+libssl.so.3        => .../openresty/nginx/sbin/../../openssl3/lib/...
+libcrypto.so.3     => .../openresty/nginx/sbin/../../openssl3/lib/...
+```
+
+`nginx -V` 中出现的 `/usr/local/openresty`、编译目录或 Builder 路径主要是编译时参数；动态库实际位置由 ELF RPATH 决定。
 
 ## 状态配置示例
 
