@@ -300,17 +300,15 @@ Actions
 
 ### Actions 运行记录清理
 
-项目提供独立的 `.github/workflows/cleanup-openresty-runs.yml`，用于清理 `Build OpenResty` 的历史运行记录：
+`build-openresty.yml` 的 `cleanup-runs` Job 在构建、Release 和 HAP 同步成功后执行：
 
-- 每次 `Build OpenResty` 成功完成后自动执行；
-- 每天定时执行一次；
-- 也可以手动进入 `Actions → Cleanup OpenResty workflow runs → Run workflow`；
-- 保留最近一次成功运行；
-- 保留正在运行的任务，不删除排队或运行中的任务；
+- `push` 或手动 `Run workflow` 触发的构建成功后，删除本 Workflow 早于当前运行的已完成记录；
+- 保留当前成功运行、更新的运行以及排队或运行中的任务；
+- 构建、Release 或 HAP 同步失败时，不清理旧记录；
 - 删除旧运行时会同时删除其关联 Artifact；
 - 不删除 GitHub Release 及 Release 附件。
 
-手动清理前可以勾选 `dry_run`，只查看将要删除的运行记录，不执行删除。
+本项目没有定时清理任务；首次清理会在下一次成功构建后执行。清理运行记录和日志不可恢复。
 
 构建流程：
 
