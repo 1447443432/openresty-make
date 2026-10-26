@@ -1,0 +1,76 @@
+name: Cleanup OpenResty workflow runs
+
+on:
+  workflow_run:
+    workflows:
+      - Build OpenResty
+    types:
+      - completed
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only show runs that would be deleted"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Keep latest successful Build OpenResty run
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+    steps:
+      - name: Remove older completed runs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          runs="$(gh api \
+            --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/build-openresty.yml/runs?per_page=100" \
+            --jq '.workflow_runs[] | select(.status == "completed") | [.id, .conclusion, .created_at] | @tsv' \
+            | sort -k3,3r)"
+
+          latest_success="$(printf '%s\n' "${runs}" | awk -F '\t' '$2 == "success" { print; exit }')"
+
+          if [ -z "${latest_success}" ]; then
+            echo "No successful Build OpenResty run found; nothing to clean."
+            exit 0
+          fi
+
+          keep_id="$(printf '%s\n' "${latest_success}" | cut -f1)"
+          echo "Keeping latest successful run: ${keep_id}"
+
+          while IFS=$'\t' read -r run_id conclusion created_at; do
+            [ -n "${run_id}" ] || continue
+            if [ "${run_id}" = "${keep_id}" ]; then
+              continue
+            fi
+
+            if [ "${DRY_RUN}" = "true" ]; then
+              echo "[DRY RUN] delete run=${run_id} conclusion=${conclusion} created_at=${created_at}"
+            else
+              echo "Deleting run=${run_id} conclusion=${conclusion} created_at=${created_at}"
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+            fi
+          done <<<"${runs}"
+
+          {
+            echo "## Workflow run cleanup"
+            echo
+            echo "- Workflow: \`Build OpenResty\`"
+            echo "- Kept latest successful run: \`${keep_id}\`"
+            echo "- Mode: \`${DRY_RUN}\`"
+            echo "- Releases were not modified."
+          } >>"${GITHUB_STEP_SUMMARY}"

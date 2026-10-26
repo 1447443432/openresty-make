@@ -298,6 +298,20 @@ Actions
 
 `OpenResty version` 也可以填写 `1.31.1.1` 或 `latest`。留空时使用 `config/openresty-version.conf` 中的默认版本。普通 `git push` 使用默认版本，不会自动切换到 1.25 系列。
 
+### Actions 运行记录清理
+
+项目提供独立的 `.github/workflows/cleanup-openresty-runs.yml`，用于清理 `Build OpenResty` 的历史运行记录：
+
+- 每次 `Build OpenResty` 成功完成后自动执行；
+- 每天定时执行一次；
+- 也可以手动进入 `Actions → Cleanup OpenResty workflow runs → Run workflow`；
+- 保留最近一次成功运行；
+- 保留正在运行的任务，不删除排队或运行中的任务；
+- 删除旧运行时会同时删除其关联 Artifact；
+- 不删除 GitHub Release 及 Release 附件。
+
+手动清理前可以勾选 `dry_run`，只查看将要删除的运行记录，不执行删除。
+
 构建流程：
 
 ```text
